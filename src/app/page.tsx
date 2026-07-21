@@ -1,10 +1,17 @@
 import { tournament } from "../../tournament.config";
 import { getTier1MaxPoints, getTier2MaxPoints, getOverallMaxPoints } from "@/lib/config";
+import { getResults, isKvConfigured } from "@/lib/storage";
+import BracketDisplay from "@/components/bracket/BracketDisplay";
 
-export default function HomePage() {
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
   const tier1Max = getTier1MaxPoints();
   const tier2Max = getTier2MaxPoints();
   const overallMax = getOverallMaxPoints();
+
+  const results = isKvConfigured() ? await getResults() : null;
+  const hasKnockoutResults = results?.knockout && Object.keys(results.knockout).length > 0;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-16">
@@ -30,6 +37,13 @@ export default function HomePage() {
           <p className="text-xs text-gray-500 mt-1">total points</p>
         </div>
       </div>
+
+      {hasKnockoutResults && (
+        <div className="rounded-lg border border-gold/20 bg-gold/5 p-6 mb-8">
+          <h2 className="font-bold text-lg mb-4 text-gold">Knockout Bracket</h2>
+          <BracketDisplay results={results} />
+        </div>
+      )}
 
       <div className="rounded-lg border border-white/10 bg-white/[0.02] p-6">
         <h2 className="font-bold text-lg mb-4">Tournament Setup</h2>

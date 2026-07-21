@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import BracketPicker from "@/components/bracket/BracketPicker";
 import { tournament } from "../../../tournament.config";
 import type { GroupPrediction, KnockoutPick, BonusPicks } from "@/lib/types";
 
@@ -102,6 +103,19 @@ export default function MyPicksPage() {
         onSave={saveTier1}
         saving={saving}
       />
+
+      {tournament.dates.tier2Opens && (
+        <Tier2Section
+          userId={user.id}
+          initialPicks={picks?.knockoutPicks ?? []}
+          initialBonusPicks={picks?.bonusPicks ?? {}}
+          tier2Submitted={picks?.tier2Submitted ?? false}
+          saving={saving}
+          setSaving={setSaving}
+          setMessage={setMessage}
+          onRefresh={fetchPicks}
+        />
+      )}
     </div>
   );
 }
@@ -235,6 +249,126 @@ function Tier1Form({
       >
         {saving ? "Saving..." : "Save Tier 1 Picks"}
       </button>
+    </div>
+  );
+}
+
+function Tier2Section({
+  userId,
+  initialPicks,
+  initialBonusPicks,
+  tier2Submitted,
+  saving,
+  setSaving,
+  setMessage,
+  onRefresh,
+}: {
+  userId: string;
+  initialPicks: KnockoutPick[];
+  initialBonusPicks: BonusPicks;
+  tier2Submitted: boolean;
+  saving: boolean;
+  setSaving: (v: boolean) => void;
+  setMessage: (v: string) => void;
+  onRefresh: () => Promise<void>;
+}) {
+  const [bonusPicks, setBonusPicks] = useState(initialBonusPicks);
+  const tier2Bonuses = tournament.scoring.bonusPicks.filter((b) => b.tier === 2);
+
+  const now = new Date();
+  const tier2Opens = tournament.dates.tier2Opens ? new Date(tournament.dates.tier2Opens) : null;
+  const tier2Deadline = new Date(tournament.dates.tier2Deadline);
+  const isOpen = tier2Opens ? now >= tier2Opens && now < tier2Deadline : now < tier2Deadline;
+
+  if (tier2Opens && now < tier2Opens) {
+    return (
+      <div className="mt-12 rounded-lg border border-gold/20 bg-gold/5 p-6 text-center">
+        <p className="text-gold font-bold">Tier 2: Knockout Bracket</p>
+        <p className="text-sm text-gray-400 mt-2">
+          Opens {tier2Opens.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+        </p>
+      </div>
+    );
+  }
+
+  async function handleSaveBracket(knockoutPicks: KnockoutPick[]) {
+    setSaving(true);
+    setMessage("");
+    const res = await fetch("/api/picks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        tier: 2,
+        knockoutPicks,
+        bonusPicks,
+      }),
+    });
+    if (res.ok) {
+      setMessage("Tier 2 bracket submitted!");
+      setTimeout(() => setMessage(""), 3000);
+      await onRefresh();
+    } else {
+      const data = await res.json();
+      setMessage(data.error ?? "Failed to save");
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="mt-12">
+      <h2 className="text-lg font-bold mb-4 text-gold">Tier 2: Knockout Bracket</h2>
+
+      {tier2Submitted && (
+        <div className="mb-4 rounded bg-gold/10 border border-gold/30 px-4 py-2 text-sm text-gold">
+          Your bracket has been submitted. No further edits allowed.
+        </div>
+      )}
+
+      {!tier2Submitted && !isOpen && (
+        <div className="mb-4 rounded bg-red-500/10 border border-red-500/30 px-4 py-2 text-sm text-red-400">
+          Tier 2 submissions are closed.
+        </div>
+      )}
+
+      {tier2Bonuses.length > 0 && (
+        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {tier2Bonuses.map((bonus) => (
+            <div key={bonus.key} className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
+              <label className="block text-sm font-bold mb-2">{bonus.icon} {bonus.label} ({bonus.points} pts)</label>
+              {bonus.type === "team" ? (
+                <select
+                  value={bonusPicks[bonus.key] ?? ""}
+                  onChange={(e) => setBonusPicks({ ...bonusPicks, [bonus.key]: e.target.value })}
+                  disabled={tier2Submitted}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded text-sm text-white disabled:opacity-50"
+                >
+                  <option value="">Select team...</option>
+                  {tournament.teams.map((t) => (
+                    <option key={t.code} value={t.code}>{t.flag} {t.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={bonusPicks[bonus.key] ?? ""}
+                  onChange={(e) => setBonusPicks({ ...bonusPicks, [bonus.key]: e.target.value })}
+                  disabled={tier2Submitted}
+                  placeholder={`Enter ${bonus.type} name`}
+                  className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded text-sm text-white placeholder:text-gray-600 disabled:opacity-50"
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <BracketPicker
+        initialPicks={initialPicks}
+        onSave={handleSaveBracket}
+        saving={saving}
+        disabled={tier2Submitted || !isOpen}
+      />
     </div>
   );
 }
